@@ -1,0 +1,3 @@
+[submodule "External/Utilities"]
+	path = External/Utilities
+	url = https://github.com/fishrosh/Utilities
