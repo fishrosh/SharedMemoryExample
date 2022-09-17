@@ -201,7 +201,6 @@ struct MultiStaticTest
             params->C = 11111ul;
             params->D = -192;
         }
-
         {
             auto name = "Jean Maionaisse";
             auto password = "ukulele11";
@@ -225,4 +224,45 @@ struct MultiStaticTest
 void tests::multiStatic()
 {
     MultiStaticTest::run();
+}
+
+struct Example
+{
+    static constexpr std::array<ipc::Descriptor, 1ull> descriptors{
+           createDescriptor<Credentials>("Creds")
+    };
+
+    static void run()
+    {
+        auto memory = createSharedMemory();
+        memory->allocate(descriptors);
+        memory->wait();
+
+        auto connection = memory->acquire_t<Credentials>(0ull);
+        std::cout << **connection;
+    }
+
+    static void open()
+    {
+        auto memory = openSharedMemory();
+        memory->allocate(descriptors);
+
+        auto name = "Crossprocess test";
+        auto password = "YeSYesYes";
+
+        {
+            auto connection = memory->acquire_t<Credentials>(0ull);
+
+            memcpy(connection->lpName, name, strlen(name) + 1);
+            memcpy(connection->lpPassword, password, strlen(password) + 1);
+
+            memory->signal();
+        }
+    }
+};
+
+void tests::example(bool isHost)
+{
+    if (isHost) Example::run();
+    else Example::open();
 }

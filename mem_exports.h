@@ -23,6 +23,8 @@ API_CALL void* openMemoryServer(ipc::IMemory::OpenInfo const& openInfo);
 API_CALL void destroyMemoryServer(void* pMemoryServer);
 API_CALL void allocate(void* pMemoryServer, vip::batch<ipc::Descriptor> descriptors);
 API_CALL void clear(void* pMemoryServer);
+API_CALL void signal(void* pMemoryServer);
+API_CALL void wait(void* pMemoryServer);
 API_CALL void* connect(void* pMemoryServer, const char* lpName);
 API_CALL void* connectIDX(void* pMemoryServer, size_t nIndex);
 

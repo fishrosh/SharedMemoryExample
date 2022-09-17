@@ -55,6 +55,16 @@ void ipc::MemoryServer::clear()
     ::clear(server);
 }
 
+void ipc::MemoryServer::signal()
+{
+    ::signal(server);
+}
+
+void ipc::MemoryServer::wait()
+{
+    ::wait(server);
+}
+
 ipc::ExclusiveHandle ipc::MemoryServer::acquire(const char* lpName)
 {
     auto connector = connect(server, lpName);

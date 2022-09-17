@@ -148,11 +148,29 @@ API_CALL void allocate(void* handle, vip::batch<ipc::Descriptor> descriptors)
     else throw_std_exception( "Provided handle is not a proper handle.");
 }
 
-API_CALL void clear(void* handle)
+API_CALL void clear(void* pMemoryServer)
 {
-    if (auto memory = reinterpret_cast<ipc::Memory*>(handle))
+    if (auto memory = reinterpret_cast<ipc::Memory*>(pMemoryServer))
     {
         memory->clear();
+    }
+    else throw_std_exception("Provided handle is not a proper handle.");
+}
+
+API_CALL void signal(void* pMemoryServer)
+{
+    if (auto memory = reinterpret_cast<ipc::Memory*>(pMemoryServer))
+    {
+        memory->signal();
+    }
+    else throw_std_exception("Provided handle is not a proper handle.");
+}
+
+API_CALL void wait(void* pMemoryServer)
+{
+    if (auto memory = reinterpret_cast<ipc::Memory*>(pMemoryServer))
+    {
+        memory->wait();
     }
     else throw_std_exception("Provided handle is not a proper handle.");
 }

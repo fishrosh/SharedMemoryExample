@@ -57,6 +57,8 @@ namespace ipc
 
 		void allocate(vip::batch<Descriptor> descriptors);
 		void clear();
+        void signal();
+        void wait();
 
         ExclusiveHandle acquire(const char* lpName);
         ExclusiveHandle acquire(size_t nIndex);

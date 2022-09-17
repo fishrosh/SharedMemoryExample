@@ -415,6 +415,7 @@ namespace ipc
 
     class Memory : FileMappingIPC, public IMemory
     {
+        EventIPC hEvent;
         Allocator alloc;
 
         std::vector<Connector> connectors;
@@ -427,6 +428,9 @@ namespace ipc
             : FileMappingIPC{ openInfo.dwDesiredAccess,
                 openInfo.bInheritHandle, 
                 openInfo.lpMemoryName }
+            , hEvent{ SYNCHRONIZE | EVENT_MODIFY_STATE,
+                openInfo.bInheritHandle,
+                getEventName(openInfo.lpMemoryName).c_str() }
             , alloc{ this->get(), createAllocatorInfo(openInfo) }
             , isOwner{ false }
         {}
@@ -437,13 +441,23 @@ namespace ipc
                 createInfo.flProtect,
                 createInfo.msMemorySize,
                 createInfo.lpMemoryName }
+            , hEvent{ reinterpret_cast<LPSECURITY_ATTRIBUTES>(createInfo.lpFileMappingAttributes),
+                false, false, getEventName(createInfo.lpMemoryName).c_str() }
             , alloc{ this->get(), createAllocatorInfo(createInfo) }
             , isOwner{ true }
         {}
 
         void allocate(vip::batch<Descriptor> descriptors);
 
+        inline void wait() { WaitForSingleObject(hEvent.get(), INFINITE); }
         inline void clear() { connectors.clear(); }
+        inline void signal() 
+        { 
+            if (!SetEvent(hEvent.get()))
+            {
+                std::cout << "Unable to signal event. Error: " << GetLastError() << std::endl;
+            }
+        }
 
         Connector* connect(const char* lpName);
         Connector* connect(size_t nIndex);
@@ -454,5 +468,7 @@ namespace ipc
         {
             return Allocator::CreateInfo{ info.accessFlags, info.msMemorySize, 0ull };
         }
+
+        static std::string getEventName(LPCSTR lpName) { return std::string{ lpName } + "::Event"; }
     };
 }
