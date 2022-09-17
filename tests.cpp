@@ -1,22 +1,16 @@
 
-#include <sstream>
 #include <array>
 #include <thread>
 #include <chrono>
+#include <memory>
+#include <iostream>
+#include <array>
+#include <vector>
 
-#include "sharemem.h"
+#include "imemory.h"
 #include "tests.h"
 
-// LPCSTR testName = "Global\\Test";
-LPCSTR gExampleMappingName = ".exmap";
-
-void throw_std_exception(const char* info)
-{
-    std::ostringstream oss;
-    oss << info << " Error code: " << GetLastError() << std::endl;
-    std::cout << oss.str();
-    throw std::exception{ oss.str().c_str() };
-}
+auto gExampleMappingName = ".exmap";
 
 struct Credentials
 {
@@ -57,8 +51,8 @@ constexpr ipc::Descriptor createDescriptor(char const* lpName)
         lpName,
         sizeof(_Ty),
         alignof(_Ty),
-        SECTION_MAP_READ | SECTION_MAP_WRITE,
-        SYNCHRONIZE,
+        ipc::Section::eMapRead | ipc::Section::eMapWrite,
+        ipc::SAT::eSynchronize,
         false,
         false,
         false,
@@ -66,29 +60,29 @@ constexpr ipc::Descriptor createDescriptor(char const* lpName)
     };
 }
 
-std::shared_ptr<ipc::Memory> createSharedMemory()
+std::shared_ptr<ipc::MemoryServer> createSharedMemory()
 {
-    ipc::Memory::CreateInfo createInfo = {};
+    ipc::MemoryServer::CreateInfo createInfo = {};
     createInfo.lpMemoryName = gExampleMappingName;
-    createInfo.hFile = INVALID_HANDLE_VALUE;
+    createInfo.hFile = nullptr;
     createInfo.lpFileMappingAttributes = nullptr;
-    createInfo.msMemorySize = adjustMemorySize(sizeof(Credentials));
-    createInfo.flProtect = PAGE_READWRITE;
-    createInfo.accessFlags = SECTION_MAP_READ | SECTION_MAP_WRITE;
+    createInfo.msMemorySize = ipc::adjustMemorySize(sizeof(Credentials));
+    createInfo.flProtect = ipc::Page::eReadWrite;
+    createInfo.accessFlags = ipc::Section::eMapRead | ipc::Section::eMapWrite;
 
-    return std::make_shared<ipc::Memory>(createInfo);
+    return std::make_shared<ipc::MemoryServer>(createInfo);
 }
 
-std::shared_ptr<ipc::Memory> openSharedMemory()
+std::shared_ptr<ipc::MemoryServer> openSharedMemory()
 {
-    ipc::Memory::OpenInfo openInfo = {};
+    ipc::MemoryServer::OpenInfo openInfo = {};
     openInfo.bInheritHandle = false;
-    openInfo.dwDesiredAccess = SECTION_MAP_READ | SECTION_MAP_WRITE;
+    openInfo.dwDesiredAccess = ipc::Section::eMapRead | ipc::Section::eMapWrite;
     openInfo.lpMemoryName = gExampleMappingName;
-    openInfo.msMemorySize = adjustMemorySize(sizeof(Credentials));
-    openInfo.accessFlags = SECTION_MAP_READ | SECTION_MAP_WRITE;
+    openInfo.msMemorySize = ipc::adjustMemorySize(sizeof(Credentials));
+    openInfo.accessFlags = ipc::Section::eMapRead | ipc::Section::eMapWrite;
 
-    return std::make_shared<ipc::Memory>(openInfo);
+    return std::make_shared<ipc::MemoryServer>(openInfo);
 }
 
 struct SingleStaticTest
@@ -97,8 +91,8 @@ struct SingleStaticTest
         "Credentials",
         sizeof(Credentials),
         alignof(Credentials),
-        SECTION_MAP_READ | SECTION_MAP_WRITE,
-        SYNCHRONIZE,
+        ipc::Section::eMapRead | ipc::Section::eMapWrite,
+        ipc::SAT::eSynchronize,
         false,
         false,
         false,
@@ -122,7 +116,7 @@ struct SingleStaticTest
             using namespace std::chrono_literals;
             std::this_thread::sleep_for(100ms);
 
-            auto connection = memory->acquire<Credentials>(0);
+            auto connection = memory->acquire_t<Credentials>(0ull);
 
             std::cout << **connection;
         }
@@ -136,7 +130,7 @@ struct SingleStaticTest
         auto name = "Credentials test";
         auto password = "Test password";
 
-        auto connection = memory->acquire<Credentials>(0);
+        auto connection = memory->acquire_t<Credentials>(0ull);
 
         memcpy(connection->lpName, name, strlen(name) + 1);
         memcpy(connection->lpPassword, password, strlen(password) + 1);
@@ -167,21 +161,21 @@ struct MultiStaticTest
 
         using namespace std::chrono_literals;
         std::this_thread::sleep_for(100ms);
-
+        
         {
-            auto connection = memory->acquire<Credentials>(0);
+            auto connection = memory->acquire_t<Credentials>(0ull);
             std::cout << **connection;
         }
         {
-            auto connection = memory->acquire<Parameters>(1);
+            auto connection = memory->acquire_t<Parameters>(1ull);
             std::cout << **connection;
         }
         {
-            auto connection = memory->acquire<Credentials>(2);
+            auto connection = memory->acquire_t<Credentials>(2ull);
             std::cout << **connection;
         }
         {
-            auto connection = memory->acquire<Parameters>(3);
+            auto connection = memory->acquire_t<Parameters>(3ull);
             std::cout << **connection;
         }
     }
@@ -195,13 +189,13 @@ struct MultiStaticTest
             auto name = "Janek Tarski";
             auto password = "abc111";
 
-            auto connection = memory->acquire<Credentials>(0);
+            auto connection = memory->acquire_t<Credentials>(0ull);
 
             memcpy(connection->lpName, name, strlen(name) + 1);
             memcpy(connection->lpPassword, password, strlen(password) + 1);
         }
         {
-            auto params = memory->acquire<Parameters>(1);
+            auto params = memory->acquire_t<Parameters>(1);
             params->A = 11.11;
             params->B = 20.20f;
             params->C = 11111ul;
@@ -212,13 +206,13 @@ struct MultiStaticTest
             auto name = "Jean Maionaisse";
             auto password = "ukulele11";
 
-            auto connection = memory->acquire<Credentials>(2);
+            auto connection = memory->acquire_t<Credentials>(2ull);
 
             memcpy(connection->lpName, name, strlen(name) + 1);
             memcpy(connection->lpPassword, password, strlen(password) + 1);
         }
         {
-            auto params = memory->acquire<Parameters>(3);
+            auto params = memory->acquire_t<Parameters>(3ull);
             params->A = 22.33;
             params->B = 77.44f;
             params->C = 1ul;

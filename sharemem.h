@@ -1,19 +1,15 @@
 #pragma once
 
-#include <iostream>
 #include <vector>
 #include <map>
-#include <memory>
+#include <string>
 
 #include <Windows.h>
 
-#include <utils.h>
+#include "mem_descs.h"
+#include "External/Utilities/utils.h"
 
 void throw_std_exception(const char* info);
-
-using ProtectionFlags = DWORD;
-using AccessFlags = DWORD;
-using MemorySize = size_t;
 
 class EventIPC
 {
@@ -80,25 +76,10 @@ class MutexHandle
 public:
 
     MutexHandle() : MutexHandle{ NULL } {}
-
     MutexHandle(HANDLE hMutex) : hMutex{ hMutex } {}
 
-    void lock()
-    {
-        auto waitResult = WaitForSingleObject(hMutex, INFINITE);
-        if (waitResult != WAIT_OBJECT_0)
-        {
-            throw_std_exception("Unable to acquire ownership of a mutex.");
-        }
-    }
-
-    void unlock()
-    {
-        if (!ReleaseMutex(hMutex))
-        {
-            std::cout << "Unable to release mutex. Error: " << GetLastError() << std::endl;
-        }
-    }
+    void lock();
+    void unlock();
 
     HANDLE get() { return hMutex; }
 };
@@ -301,22 +282,25 @@ private:
     MapViewIPC() : mapping{ nullptr } {}
 };
 
-template <typename _Ty>
+// hidden 
+MemorySize adjustMemorySize(MemorySize size);
+
+template <typename _Ty, typename _Mutex_Ty>
 class exclusive_ptr
 {
     _Ty* memory;
-    MutexHandle mutex;
+    _Mutex_Ty mutex;
 
 public:
 
-    exclusive_ptr(MutexHandle mutex, _Ty* memory)
+    exclusive_ptr(_Mutex_Ty mutex, _Ty* memory)
         : mutex{ mutex }
         , memory{ memory }
     {
         mutex.lock();
     }
 
-    exclusive_ptr(MutexHandle mutex, LPVOID memory)
+    exclusive_ptr(_Mutex_Ty mutex, LPVOID memory)
         : exclusive_ptr{ mutex, reinterpret_cast<_Ty*>(memory) }
     {}
 
@@ -338,17 +322,13 @@ public:
     _Ty* operator->() { return memory; }
 };
 
-// hidden 
-MemorySize adjustMemorySize(MemorySize size);
-
 namespace ipc
 {
     class Connector
     {
+        MutexHandle hMutex;
         MutexIPC viewMutex;
         LPVOID memory;
-
-        MutexHandle hMutex;
 
     public:
 
@@ -364,7 +344,7 @@ namespace ipc
                 getMutexName(lpName).c_str() }
             , memory{ memory }
         {
-            hMutex = viewMutex.get();
+            hMutex = viewMutex.getHandle();
         }
 
         struct CreateInfo
@@ -380,45 +360,25 @@ namespace ipc
                 getMutexName(lpName).c_str() }
             , memory{ memory }
         {
-            hMutex = viewMutex.get();
+            hMutex = viewMutex.getHandle(); 
         }
 
         Connector(Connector&& other)
             : viewMutex{ std::move(other.viewMutex) }
             , memory{ other.memory }
         {
-            hMutex = viewMutex.get();
+            hMutex = viewMutex.getHandle(); 
         }
 
-        template <typename _Ty>
-        exclusive_ptr<_Ty> acquire() { return exclusive_ptr<_Ty>{ hMutex, memory }; }
+        LPVOID getHandle() { return memory; }
+        MutexHandle& getMutex() { return hMutex; }
+
+        LPVOID const getHandle() const { return memory; }
+        MutexHandle const& getMutex() const { return hMutex; }
 
     private:
 
         static std::string getMutexName(LPCSTR lpName) { return std::string{ lpName } + "::Mutex"; }
-    };
-
-    struct Descriptor
-    {
-        LPCSTR lpName;
-        MemorySize size;
-        MemorySize alignment;
-        AccessFlags accessFlags;
-        DWORD dwDesiredAccess;
-        BOOL bInheritHandle;
-        BOOL bInitialOwner;
-        BOOL bManualReset;
-        BOOL bInitialState;
-
-        operator Connector::OpenInfo() const
-        {
-            return Connector::OpenInfo{ dwDesiredAccess, bInheritHandle };
-        }
-
-        operator Connector::CreateInfo() const
-        {
-            return Connector::CreateInfo{ bInitialOwner, bManualReset, bInitialState };
-        };
     };
 
     class Allocator
@@ -453,7 +413,7 @@ namespace ipc
         LPWORD allocato(MemorySize msSize, MemorySize msAlignment);
     };
 
-    class Memory : FileMappingIPC
+    class Memory : FileMappingIPC, public IMemory
     {
         Allocator alloc;
 
@@ -463,46 +423,21 @@ namespace ipc
 
     public:
 
-        struct CommonInfo
-        {
-            LPCSTR lpMemoryName = "";
-            AccessFlags accessFlags = SECTION_QUERY;
-            MemorySize msMemorySize = 0ull;
-
-            operator Allocator::CreateInfo() const
-            {
-                return Allocator::CreateInfo{ accessFlags, msMemorySize, 0ull };
-            }
-        };
-
-        struct OpenInfo : public CommonInfo
-        {
-            DWORD dwDesiredAccess;
-            BOOL bInheritHandle;
-        };
-
         Memory(OpenInfo const& openInfo)
             : FileMappingIPC{ openInfo.dwDesiredAccess,
                 openInfo.bInheritHandle, 
                 openInfo.lpMemoryName }
-            , alloc{ this->get(), openInfo }
+            , alloc{ this->get(), createAllocatorInfo(openInfo) }
             , isOwner{ false }
         {}
 
-        struct CreateInfo : public CommonInfo
-        {
-            HANDLE hFile = INVALID_HANDLE_VALUE;
-            LPSECURITY_ATTRIBUTES lpFileMappingAttributes = NULL;
-            ProtectionFlags flProtect = PAGE_READWRITE;
-        };
-
         Memory(CreateInfo const& createInfo)
             : FileMappingIPC{ createInfo.hFile,
-                createInfo.lpFileMappingAttributes,
+                reinterpret_cast<LPSECURITY_ATTRIBUTES>(createInfo.lpFileMappingAttributes),
                 createInfo.flProtect,
                 createInfo.msMemorySize,
                 createInfo.lpMemoryName }
-            , alloc{ this->get(), createInfo }
+            , alloc{ this->get(), createAllocatorInfo(createInfo) }
             , isOwner{ true }
         {}
 
@@ -510,7 +445,14 @@ namespace ipc
 
         inline void clear() { connectors.clear(); }
 
-        template <typename _Ty>
-        exclusive_ptr<_Ty> acquire(size_t index) { return connectors[index].acquire<_Ty>(); }
+        Connector* connect(const char* lpName);
+        Connector* connect(size_t nIndex);
+
+    private:
+
+        static Allocator::CreateInfo createAllocatorInfo(CommonInfo const& info)
+        {
+            return Allocator::CreateInfo{ info.accessFlags, info.msMemorySize, 0ull };
+        }
     };
 }
