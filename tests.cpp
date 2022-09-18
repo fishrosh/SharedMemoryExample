@@ -60,9 +60,9 @@ constexpr ipc::Descriptor createDescriptor(char const* lpName)
     };
 }
 
-std::shared_ptr<ipc::MemoryServer> createSharedMemory()
+std::shared_ptr<ipc::SharedMemory> createSharedMemory()
 {
-    ipc::MemoryServer::CreateInfo createInfo = {};
+    ipc::SharedMemory::CreateInfo createInfo = {};
     createInfo.lpMemoryName = gExampleMappingName;
     createInfo.hFile = nullptr;
     createInfo.lpFileMappingAttributes = nullptr;
@@ -70,19 +70,19 @@ std::shared_ptr<ipc::MemoryServer> createSharedMemory()
     createInfo.flProtect = ipc::Page::eReadWrite;
     createInfo.accessFlags = ipc::Section::eMapRead | ipc::Section::eMapWrite;
 
-    return std::make_shared<ipc::MemoryServer>(createInfo);
+    return std::make_shared<ipc::SharedMemory>(createInfo);
 }
 
-std::shared_ptr<ipc::MemoryServer> openSharedMemory()
+std::shared_ptr<ipc::SharedMemory> openSharedMemory()
 {
-    ipc::MemoryServer::OpenInfo openInfo = {};
+    ipc::SharedMemory::OpenInfo openInfo = {};
     openInfo.bInheritHandle = false;
     openInfo.dwDesiredAccess = ipc::Section::eMapRead | ipc::Section::eMapWrite;
     openInfo.lpMemoryName = gExampleMappingName;
     openInfo.msMemorySize = ipc::adjustMemorySize(sizeof(Credentials));
     openInfo.accessFlags = ipc::Section::eMapRead | ipc::Section::eMapWrite;
 
-    return std::make_shared<ipc::MemoryServer>(openInfo);
+    return std::make_shared<ipc::SharedMemory>(openInfo);
 }
 
 struct SingleStaticTest

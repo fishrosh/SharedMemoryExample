@@ -89,115 +89,6 @@ LPWORD ipc::Allocator::allocato(MemorySize msSize, MemorySize msAlignment)
     return output;
 }
 
-API_CALL void lock(void* handle)
-{
-    if (auto mutex = reinterpret_cast<MutexHandle*>(handle))
-    {
-        mutex->lock();
-    }
-    else throw_std_exception("Provided handle is not a proper handle.");
-}
-
-API_CALL void unlock(void* handle)
-{
-    if (auto mutex = reinterpret_cast<MutexHandle*>(handle))
-    {
-        mutex->unlock();
-    }
-}
-
-API_CALL void* getHandle(void* handle)
-{
-    if (auto connector = reinterpret_cast<ipc::Connector*>(handle))
-    {
-        return connector->getHandle();
-    }
-    else throw_std_exception("Provided handle is not a proper handle.");
-}
-
-API_CALL void* getMutex(void* handle)
-{
-    if (auto connector = reinterpret_cast<ipc::Connector*>(handle))
-    {
-        return &(connector->getMutex());
-    }
-    else throw_std_exception("Provided handle is not a proper handle.");
-}
-
-API_CALL void* createMemoryServer(ipc::IMemory::CreateInfo const& createInfo)
-{
-    return new ipc::Memory(createInfo);
-}
-
-API_CALL void* openMemoryServer(ipc::IMemory::OpenInfo const& openInfo)
-{
-    return new ipc::Memory(openInfo);
-}
-
-API_CALL void destroyMemoryServer(void* pMemoryServer)
-{
-    delete reinterpret_cast<ipc::Memory*>(pMemoryServer);
-}
-
-API_CALL void allocate(void* handle, vip::batch<ipc::Descriptor> descriptors)
-{
-    if (auto memory = reinterpret_cast<ipc::Memory*>(handle))
-    {
-        memory->allocate(descriptors);
-    }
-    else throw_std_exception( "Provided handle is not a proper handle.");
-}
-
-API_CALL void clear(void* pMemoryServer)
-{
-    if (auto memory = reinterpret_cast<ipc::Memory*>(pMemoryServer))
-    {
-        memory->clear();
-    }
-    else throw_std_exception("Provided handle is not a proper handle.");
-}
-
-API_CALL void signal(void* pMemoryServer)
-{
-    if (auto memory = reinterpret_cast<ipc::Memory*>(pMemoryServer))
-    {
-        memory->signal();
-    }
-    else throw_std_exception("Provided handle is not a proper handle.");
-}
-
-API_CALL void wait(void* pMemoryServer)
-{
-    if (auto memory = reinterpret_cast<ipc::Memory*>(pMemoryServer))
-    {
-        memory->wait();
-    }
-    else throw_std_exception("Provided handle is not a proper handle.");
-}
-
-API_CALL void* connect(void* handle, const char* lpName)
-{
-    if (auto memory = reinterpret_cast<ipc::Memory*>(handle))
-    {
-        return memory->connect(lpName);
-    }
-    else throw_std_exception("Provided handle is not a proper handle.");
-}
-
-API_CALL void* connectIDX(void* pMemoryServer, size_t nIndex)
-{
-    if (auto memory = reinterpret_cast<ipc::Memory*>(pMemoryServer))
-    {
-        return memory->connect(nIndex);
-    }
-    else throw_std_exception("Provided handle is not a proper handle.");
-}
-
-API_CALL size_t adjustMemorySizeWrapper(size_t in)
-{
-    return ::adjustMemorySize(in);
-}
-
 void MutexHandle::lock()
 {
     auto waitResult = WaitForSingleObject(hMutex, INFINITE);
@@ -213,4 +104,172 @@ void MutexHandle::unlock()
     {
         std::cout << "Unable to release mutex. Error: " << GetLastError() << std::endl;
     }
+}
+
+template <typename _Callable_Ty, typename... Args>
+Result trycatch_wrapper(_Callable_Ty _callable, Args&&... args)
+{
+    try {
+        _callable(args...);
+        return Result::eSuccess;
+    }
+    catch (std::exception ex) {
+        lastKnownError = ex.what();
+        return Result::eFailure;
+    }
+    catch (...) {
+        return Result::eUnknownError;
+    }
+}
+
+namespace exception_policy_nothrow
+{
+    template <typename _Callable_Ty, typename... Args>
+    inline Result wrapper(_Callable_Ty _callable, Args&&... args)
+    {
+        return ::trycatch_wrapper(_callable, args...);
+    }
+}
+
+namespace exception_policy_any
+{
+    template <typename _Callable_Ty, typename... Args>
+    Result wrapper(_Callable_Ty _callable, Args&&... args)
+    {
+        _callable(args...);
+        return Result::eSuccess;
+    }
+}
+
+#ifdef EXCEPTION_POLICY_NOTHROW
+#define _policy ::exception_policy_nothrow::
+#else
+#define _policy ::exception_policy_any::
+#endif
+
+const char* lastKnownError = nullptr;
+
+// mutex
+void _lock(void* handle) { reinterpret_cast<MutexHandle*>(handle)->lock(); }
+void _unlock(void* handle) { reinterpret_cast<MutexHandle*>(handle)->unlock(); }
+
+// connector
+void _get_memory(void* pConnector, void** outMemPtr) 
+{ 
+    *outMemPtr = reinterpret_cast<ipc::Connector*>(pConnector)->getHandle(); 
+}
+
+void _get_mutex(void* pConnector, void** outMutex)
+{
+    *outMutex = &reinterpret_cast<ipc::Connector*>(pConnector)->getMutex();
+}
+
+// memory
+void _create_memory(ipc::IMemory::CreateInfo const& createInfo, void** outSharedMemory)
+{
+    *outSharedMemory = new ipc::Memory(createInfo);
+}
+
+void _open_memory(ipc::IMemory::OpenInfo const& openInfo, void** outSharedMemory)
+{
+    *outSharedMemory = new ipc::Memory(openInfo);
+}
+
+void _allocate(void* handle, vip::batch<ipc::Descriptor> descriptors)
+{
+    reinterpret_cast<ipc::Memory*>(handle)->allocate(descriptors);
+}
+
+void _clear(void* pMemory) { reinterpret_cast<ipc::Memory*>(pMemory)->clear(); }
+void _signal(void* pMemory) { reinterpret_cast<ipc::Memory*>(pMemory)->signal(); }
+void _wait(void* pMemory) { reinterpret_cast<ipc::Memory*>(pMemory)->wait(); }
+
+void _connect(void* pMemoryServer, const char* lpName, void** outConnector)
+{
+    *outConnector = reinterpret_cast<ipc::Memory*>(pMemoryServer)->connect(lpName);
+}
+
+void _connectIDX(void* pMemoryServer, size_t nIndex, void** outConnector)
+{
+    *outConnector = reinterpret_cast<ipc::Memory*>(pMemoryServer)->connect(nIndex);
+}
+
+// misc
+void _adjust_mem_size(size_t inSize, size_t* outSize)
+{
+    *outSize = adjustMemorySize(inSize);
+}
+
+// mutex
+API_CALL Result lock(void* handle)
+{
+    return _policy wrapper(_lock, handle);
+}
+
+API_CALL Result unlock(void* handle)
+{
+    return _policy wrapper(_unlock, handle);
+}
+
+// connector
+API_CALL Result getHandle(void* pConnector, void** outMemPtr)
+{
+    return _policy wrapper(_get_memory, pConnector, outMemPtr);
+}
+
+API_CALL Result getMutex(void* pConnector, void** outMutex)
+{
+    return _policy wrapper(_get_mutex, pConnector, outMutex);
+}
+
+// memory
+API_CALL Result createSharedMemory(ipc::IMemory::CreateInfo const& createInfo, void** outSharedMemory)
+{
+    return _policy wrapper(_create_memory, createInfo, outSharedMemory);
+}
+
+API_CALL Result openSharedMemory(ipc::IMemory::OpenInfo const& openInfo, void** outSharedMemory)
+{
+    return _policy wrapper(_open_memory, openInfo, outSharedMemory);
+}
+
+API_CALL void destroyMemoryServer(void* pMemoryServer)
+{
+    delete reinterpret_cast<ipc::Memory*>(pMemoryServer);
+}
+
+API_CALL Result allocate(void* handle, vip::batch<ipc::Descriptor> descriptors)
+{
+    return _policy wrapper(_allocate, handle, descriptors);
+}
+
+API_CALL Result clear(void* pMemoryServer)
+{
+    return _policy wrapper(_clear, pMemoryServer);
+}
+
+API_CALL Result signal(void* pMemoryServer)
+{
+    return _policy wrapper(_signal, pMemoryServer);
+}
+
+API_CALL Result wait(void* pMemoryServer)
+{
+    return _policy wrapper(_wait, pMemoryServer);
+}
+
+API_CALL Result connect(void* pMemoryServer, const char* lpName, void** outConnector)
+{
+    return _policy wrapper(_connect, pMemoryServer, lpName, outConnector);
+}
+
+API_CALL Result connectIDX(void* pMemoryServer, size_t nIndex, void** outConnector)
+{
+    return _policy wrapper(_connectIDX, pMemoryServer, nIndex, outConnector);
+}
+
+// misc
+API_CALL Result adjustMemorySizeWrapper(size_t inSize, size_t* outSize)
+{
+    return _policy wrapper(_adjust_mem_size, inSize, outSize);
 }

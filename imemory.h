@@ -45,15 +45,15 @@ namespace ipc
         _Ty const* operator*() const { return &this->as<_Ty>(); }
     };
 
-	class MemoryServer : public ipc::IMemory 
+	class SharedMemory : public ipc::IMemory 
 	{
 		void* server;
 
 	public:
 
-        MemoryServer(OpenInfo const& openInfo);
-        MemoryServer(CreateInfo const& createInfo);
-        ~MemoryServer();
+        SharedMemory(OpenInfo const& openInfo);
+        SharedMemory(CreateInfo const& createInfo);
+        ~SharedMemory();
 
 		void allocate(vip::batch<Descriptor> descriptors);
 		void clear();

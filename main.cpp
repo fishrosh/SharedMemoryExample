@@ -4,8 +4,8 @@
 int main(int count, char* args[])
 {
     //::tests::singleStatic();
-    // ::tests::multiStatic();
-
+    ::tests::multiStatic();
+    return 0;
     for (auto i = 0ull; i < count; ++i)
         std::cout << args[i] << std::endl;
 
